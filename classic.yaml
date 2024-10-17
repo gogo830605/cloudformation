@@ -264,4 +264,3 @@ Resources:
           Value: !Sub "${ProjectName}-EC2"
         - Key: "Project"
           Value: !Ref ProjectName
-            
