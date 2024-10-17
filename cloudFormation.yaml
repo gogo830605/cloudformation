@@ -1,0 +1,267 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Basic VPC setup with public and private subnets"
+
+Parameters:
+  ProjectName:
+    Description: project name and tag
+    Type: String
+    Default: cic101-test
+  InstanceType:
+    Description: EC2 instance type for WordPress
+    Type: String
+    Default: t2.micro
+
+Resources:
+  # Create the VPC
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: "10.2.0.0/16"
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags: 
+        - Key: "Name"
+          Value: !Sub "${ProjectName}-VPC"
+        - Key: "Project"
+          Value: !Ref ProjectName
+
+  # Create a Public Subnet
+  PublicSubnet1:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: "10.2.1.0/24"
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: 'ap-northeast-1a'
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${ProjectName}-PublicSubnet-ap-northeast-1a"
+        - Key: "Project"
+          Value: !Ref ProjectName
+
+  PublicSubnet2:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: "10.2.2.0/24"
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: 'ap-northeast-1c'
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${ProjectName}-PublicSubnet-ap-northeast-1c"
+        - Key: "Project"
+          Value: !Ref ProjectName
+        
+  # Create a Private Subnet
+  PrivateSubnet1:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: "10.2.3.0/24"
+      AvailabilityZone: 'ap-northeast-1a'
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${ProjectName}-PrivateSubnet-ap-northeast-1a"
+        - Key: "Project"
+          Value: !Ref ProjectName
+    
+  PrivateSubnet2:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: "10.2.4.0/24"
+      AvailabilityZone: 'ap-northeast-1c'
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${ProjectName}-PrivateSubnet-ap-northeast-1c"
+        - Key: "Project"
+          Value: !Ref ProjectName
+
+  # Create an Internet Gateway
+  InternetGateway:
+    Type: "AWS::EC2::InternetGateway"
+    Properties:
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${ProjectName}-InternetGateway"
+        - Key: "Project"
+          Value: !Ref ProjectName
+
+  # Attach the Internet Gateway to the VPC
+  AttachGateway:
+    Type: "AWS::EC2::VPCGatewayAttachment"
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  # Create a Public Route Table
+  PublicRouteTable:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${ProjectName}-PublicRouteTable"
+        - Key: "Project"
+          Value: !Ref ProjectName
+
+  # Create a Private Route Table
+  PrivateRouteTable:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${ProjectName}-PrivateRouteTable"
+        - Key: "Project"
+          Value: !Ref ProjectName
+
+  # Create a Public Route to Internet Gateway
+  PublicRoute:
+    Type: "AWS::EC2::Route"
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: "0.0.0.0/0"
+      GatewayId: !Ref InternetGateway
+
+  # Associate Public Subnet with Public Route Table
+  PublicSubnet1RouteTableAssociation:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnet2RouteTableAssociation:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref PublicRouteTable
+
+  # Associate Private Subnet with Private Route Table
+  PrivateSubnet1RouteTableAssociation:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      RouteTableId: !Ref PrivateRouteTable
+  
+  PrivateSubnet2RouteTableAssociation:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref PrivateRouteTable
+
+  # Security Group for EC2
+  EC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security Group for WordPress EC2
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${ProjectName}-EC2SecurityGroup"
+        - Key: "Project"
+          Value: !Ref ProjectName
+  
+  # RDS 安全群組 (允許來自 EC2 的連接)
+  RDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow MySQL traffic
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !Ref EC2SecurityGroup
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${ProjectName}-RDSSecurityGroup"
+        - Key: "Project"
+          Value: !Ref ProjectName
+  
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: "RDS subnet group"
+      SubnetIds:
+        - !Ref PrivateSubnet1  # 必須在同一 VPC 內
+        - !Ref PrivateSubnet2 
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-RDSSubnetGroup"
+        - Key: "Project"
+          Value: !Ref ProjectName
+
+  # RDS 資料庫
+  RDS:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceClass: db.t3.micro  # 符合免費方案的配置
+      Engine: mysql
+      EngineVersion: "8.0.35"
+      AllocatedStorage: 20
+      DBName: wp
+      MasterUsername: root
+      MasterUserPassword: 12345678
+      VPCSecurityGroups:
+        - !Ref RDSSecurityGroup
+      DBSubnetGroupName: !Ref DBSubnetGroup  # 使用自定義的 DB Subnet Group
+      PubliclyAccessible: false
+      MultiAZ: false
+      DeletionProtection: false
+      StorageType: gp2
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${ProjectName}-RDSInstance"
+        - Key: "Project"
+          Value: !Ref ProjectName
+
+  WordPressEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: ami-0ef29ab52ff72213b # Amazon Linux 2023 AMI
+      SecurityGroupIds:
+        - !Ref EC2SecurityGroup
+      # KeyName: !Ref KeyName # SSH 金鑰名
+      SubnetId: !Ref PublicSubnet1 # 指定子網
+      UserData: 
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          yum update -y
+          yum install -y docker
+          systemctl start docker
+          systemctl enable docker
+          usermod -a -G docker ec2-user
+
+          mkdir -p /home/ec2-user/.docker/cli-plugins
+          curl -SL https://github.com/docker/compose/releases/download/v2.26.1/docker-compose-linux-x86_64 -o /home/ec2-user/.docker/cli-plugins/docker-compose
+          chmod +x /home/ec2-user/.docker/cli-plugins/docker-compose
+
+          yum install -y git
+
+          mkdir /home/ec2-user/wordpress /home/ec2-user/logs
+          docker run --name wordpress \
+            -e WORDPRESS_DB_HOST=${RDS.Endpoint.Address}:3306 \
+            -e WORDPRESS_DB_USER=root \
+            -e WORDPRESS_DB_PASSWORD=12345678 \
+            -e WORDPRESS_DB_NAME=wp \
+            -v /home/ec2-user/wordpress:/var/www/html \
+            -v /home/ec2-user/logs:/var/log/apache2 \
+            -p 80:80 \
+            -d wordpress
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${ProjectName}-EC2"
+        - Key: "Project"
+          Value: !Ref ProjectName
+            
